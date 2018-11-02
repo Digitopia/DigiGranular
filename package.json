@@ -3,8 +3,5 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "live-server ."
-  },
-  "dependencies": {
-    "tone": "^0.12.80"
   }
 }
