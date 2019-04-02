@@ -43,7 +43,7 @@ export default {
             this.wave = window.WaveSurfer.create({
                 container: '#waveform',
                 waveColor: 'lightgrey',
-                progressColor: 'lightgrey',
+                progressColor: 'grey',
                 cursorColor: 'rgba(0, 0, 0, 0.3)',
                 cursorWidth: 1,
                 height: 220,
