@@ -57,8 +57,8 @@ export default {
             params: {
                 grainSize: {
                     min: 0.01,
-                    max: 0.2,
-                    step: 0.001,
+                    max: 1,
+                    step: 0.01,
                     default: 0.1,
                     value: 0.1,
                     label: 'Grain Size',
@@ -93,13 +93,21 @@ export default {
                 },
                 randomness: {
                     min: 0,
-                    max: 6,
-                    step: 0.1,
-                    default: 3,
-                    value: 3,
+                    max: 1,
+                    step: 0.01,
+                    default: 0.5,
+                    value: 0.5,
                     label: 'Randomness',
-                    tooltip:
-                        'How far from original point? (up to 6 times size of maximum grain either way)',
+                    tooltip: 'How far from original point?',
+                },
+                reverse: {
+                    min: 0,
+                    max: 1,
+                    step: 0.01,
+                    default: 0.5,
+                    value: 0.5,
+                    label: 'Reverse',
+                    tooltip: 'Probability of reading buffer in reverse',
                 },
             },
             envelope: {
@@ -115,6 +123,7 @@ export default {
             soundActiveIdx: 0,
             dragging: false,
             buffer: null,
+            reverseBuffer: null,
             ctx: null,
             canvasCtx: null,
             canvas: null,
@@ -147,6 +156,10 @@ export default {
 
         randomness() {
             return this.params.randomness.value
+        },
+
+        reverse() {
+            return this.params.reverse.value
         },
 
         x() {
@@ -228,6 +241,23 @@ export default {
             })
             this.wave.on('ready', () => {
                 this.buffer = this.wave.backend.buffer
+                window.buffer = this.buffer
+
+                // Clone buffer
+                const clonedBuffer = this.ctx.createBuffer(
+                    1,
+                    this.buffer.length,
+                    this.buffer.sampleRate
+                )
+                const bufferData = clonedBuffer.getChannelData(0)
+                for (let i = 0; i < this.buffer.length; i++) {
+                    bufferData[i] = this.buffer.getChannelData(0)[i]
+                }
+
+                // Reverse it
+                Array.prototype.reverse.call(clonedBuffer.getChannelData(0))
+                this.reverseBuffer = clonedBuffer
+                window.reverseBuffer = this.reverseBuffer
             })
             window.wave = this.wave
 
@@ -264,7 +294,8 @@ export default {
 
             // Create a grain buffer
             const source = this.ctx.createBufferSource()
-            source.buffer = this.buffer
+            const r = Math.random()
+            source.buffer = r <= this.reverse ? this.reverseBuffer : this.buffer
             source.playbackRate.value = this.pitchShift
             source.addEventListener('ended', () => {
                 this.grains.pop()
@@ -335,9 +366,9 @@ export default {
                 )
                 this.canvasCtx.fillRect(
                     x - size / 2,
-                    this.height / 2 - size / 2,
+                    this.height / 2 - 5,
                     size,
-                    size
+                    10
                 )
             }
         },
@@ -459,7 +490,7 @@ body {
 
 #controls {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     grid-gap: 20px;
     .control {
         font-size: 12px;
