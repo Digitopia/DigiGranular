@@ -1,195 +1,479 @@
 <template>
     <div id="app">
-        <div class="container">
+        <div class="waveform-wrapper">
             <div id="waveform"></div>
+            <canvas id="canvas" ref="canvas" @click="click"></canvas>
+        </div>
 
-            <div id="buttons">
-                <label for="reverse">reverse</label>
-                <div id="reverse"></div>
-
-                <label for="grainSize">grainSize</label>
-                <div id="grainSize"></div>
-
-                <label for="overlap">overlap</label>
-                <div id="overlap"></div>
-
-                <label for="detune">detune</label>
-                <div id="detune"></div>
-
-                <label for="playbackRate">playbackRate</label>
-                <div id="playbackRate"></div>
+        <div id="presets">
+            <div
+                v-for="(sound, index) in sounds"
+                :key="index"
+                class="preset"
+                :class="{ active: index === soundActiveIdx }"
+                @click="soundActiveIdx = index"
+            >
+                <div>{{ index + 1 }}</div>
+            </div>
+        </div>
+        <div id="controls">
+            <div v-for="param in params" :key="param.label" class="control">
+                <span v-tooltip="`${param.tooltip}`"
+                    >{{ param.label }}
+                    <small style="text-align: right"
+                        >({{ param.value }})</small
+                    ></span
+                >
+                <input
+                    v-model.number="param.value"
+                    type="range"
+                    class="slider"
+                    :min="param.min"
+                    :max="param.max"
+                    :step="param.step"
+                    @dblclick="param.value = param.default"
+                />
+            </div>
+            <div class="control">
+                <span>Envelope</span>
+                <input v-model="useEnvelope" type="checkbox" />
             </div>
         </div>
     </div>
 </template>
 
 <script>
+import WaveSurfer from 'wavesurfer.js'
+
+import utils from '@/utils.js'
+
 export default {
-    name: 'App',
+    data() {
+        return {
+            useEnvelope: true,
+            params: {
+                grainSize: {
+                    min: 0.01,
+                    max: 0.2,
+                    step: 0.001,
+                    default: 0.1,
+                    value: 0.1,
+                    label: 'Grain Size',
+                    tooltip: 'How big the grain? (10ms-200ms)',
+                },
+                pitchShift: {
+                    min: 0.1,
+                    max: 2,
+                    step: 0.01,
+                    default: 1,
+                    value: 1,
+                    label: 'Pitch Shift',
+                    tooltip: 'Change playbackRate of grain',
+                },
+                pan: {
+                    min: 0,
+                    max: 1,
+                    step: 0.1,
+                    default: 0.5,
+                    value: 0.5,
+                    label: 'Pan',
+                    tooltip: 'Pan much or not really?',
+                },
+                density: {
+                    min: 1,
+                    max: 30,
+                    step: 0.1,
+                    default: 3,
+                    value: 3,
+                    label: 'Density',
+                    tooltip: 'How many grains per second? (1-10)',
+                },
+                randomness: {
+                    min: 0,
+                    max: 6,
+                    step: 0.1,
+                    default: 3,
+                    value: 3,
+                    label: 'Randomness',
+                    tooltip:
+                        'How far from original point? (up to 6 times size of maximum grain either way)',
+                },
+            },
+            envelope: {
+                attack: 0.002,
+                release: 0.002,
+            },
+            sounds: [
+                '/sounds/speech.wav',
+                '/sounds/guitar.wav',
+                '/sounds/bonang.wav',
+                '/sounds/bird.wav',
+            ],
+            soundActiveIdx: 0,
+            dragging: false,
+            buffer: null,
+            ctx: null,
+            canvasCtx: null,
+            canvas: null,
+            grains: [],
+            master: null,
+            origin: null,
+        }
+    },
+
+    computed: {
+        grainSize() {
+            return this.params.grainSize.value
+        },
+
+        pitchShift() {
+            return this.params.pitchShift.value
+        },
+
+        rate() {
+            return this.params.rate.value
+        },
+
+        pan() {
+            return this.params.pan.value
+        },
+
+        density() {
+            return this.params.density.value
+        },
+
+        randomness() {
+            return this.params.randomness.value
+        },
+
+        x() {
+            return this.origin.x
+        },
+    },
+
+    watch: {
+        soundActiveIdx(newIdx, oldIdx) {
+            if (newIdx === oldIdx) return
+            this.soundActiveIdx = newIdx
+            this.changeSound(newIdx)
+        },
+
+        origin() {
+            console.log('origin changed', this.origin)
+            this.updateInterval()
+        },
+
+        density() {
+            this.updateInterval()
+        },
+    },
+
+    created() {
+        document.addEventListener('keypress', evt => {
+            switch (evt.key) {
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                    this.soundActiveIdx = evt.key - 1
+            }
+        })
+    },
 
     mounted() {
-        this.init()
+        this.initWave()
+        this.initCanvas()
+
+        window.addEventListener('resize', () => {
+            this.resize()
+        })
+
+        this.master = this.ctx.createGain()
+        this.master.connect(this.ctx.destination)
     },
 
     methods: {
-        init() {
-            this.sound = 'sounds/speech.wav'
-            this.initWave()
-            this.initAudio()
-            this.initUi()
+        changeSound(index) {
+            console.log('changeSound')
+            this.wave.load(this.sounds[index])
+            const { ac: ctx } = this.wave.backend
+            this.ctx = ctx
+        },
+
+        resize() {
+            this.width = this.canvas.clientWidth
+            this.height = this.canvas.clientHeight
+            this.canvas.setAttribute('width', this.width)
+            this.canvas.setAttribute('height', this.height)
+        },
+
+        initCanvas() {
+            this.canvas = this.$refs.canvas
+            this.canvasCtx = this.canvas.getContext('2d')
+            this.resize()
         },
 
         initWave() {
-            this.wave = window.WaveSurfer.create({
+            this.wave = WaveSurfer.create({
                 container: '#waveform',
-                waveColor: 'lightgrey',
-                progressColor: 'grey',
-                cursorColor: 'rgba(0, 0, 0, 0.3)',
-                cursorWidth: 1,
-                height: 220,
-                normalize: true,
-                plugins: [
-                    // WaveSurfer.cursor.create(),
-                    window.WaveSurfer.regions.create({}),
-                ],
+                waveColor: 'rgba(255, 128, 0, 155)',
+                progressColor: 'transparent',
+                height: 200,
+                barHeight: 1,
+                barWidth: 1,
+                cursorWidth: 0,
             })
-
             this.wave.on('ready', () => {
-                this.wave.addRegion({
-                    start: 1,
-                    end: 2,
-                    drag: true,
-                    resize: true,
-                })
-                this.wave.addRegion({
-                    start: 0.2,
-                    end: 0.5,
-                    drag: false,
-                    resize: true,
-                    color: 'rgba(42, 186, 186, 0.3)',
-                })
-                this.wave.addRegion({
-                    start: 3.1,
-                    end: 3.4,
-                    drag: false,
-                    resize: false,
-                    color: 'rgba(200, 100, 50, 0.4)',
-                })
+                this.buffer = this.wave.backend.buffer
             })
+            window.wave = this.wave
 
-            this.wave.load(this.sound)
-
-            this.wave.on('seek', progress => {
-                console.log('seeked', progress)
-                const t = this.grainPlayer.buffer.duration * progress
-                console.log('t', t)
-                this.grainPlayer.loopStart = t
-                this.grainPlayer.loopEnd = t + this.grainPlayer.grainSize
-                this.grainPlayer.start(0, t)
-            })
+            this.changeSound(this.soundActiveIdx)
         },
 
-        initAudio() {
-            this.grainPlayer = new window.Tone.GrainPlayer({
-                url: this.sound,
-                onload: window.Tone.noOp,
-                overlap: 1,
-                grainSize: 0.1,
-                playbackRate: 1,
-                detune: 0,
-                loop: true,
-                // loopStart: 0.1,
-                // loopEnd: 0.2,
-                reverse: false,
-            }).toMaster()
+        click(e) {
+            const x = e.offsetX
+            const y = e.offsetY
+            this.origin = { x, y }
         },
 
-        initUi() {
-            new window.Nexus.Slider('#grainSize', {
-                size: [100, 20],
-                mode: 'relative', // 'absolute
-                min: 0.001,
-                max: 1,
-                step: 0.01,
-                value: 0.3,
-            }).on('change', v => {
-                console.log(v)
-                this.grainPlayer.grainSize = v
-                this.grainPlayer.loopEnd =
-                    this.grainPlayer.loopStart + this.grainPlayer.grainSize
+        addGrain() {
+            console.log('Adding grain at', this.origin)
+
+            // Determine where to read the grain from
+            const baseOffset = utils.map(
+                this.x,
+                0,
+                this.width,
+                0,
+                this.buffer.duration
+            )
+            const randOffsetRange = this.randomness * this.params.grainSize.max
+            const randOffset =
+                utils.randomFloat(0, randOffsetRange) - randOffsetRange / 2
+            const grainOffset = utils.clamp(
+                baseOffset + randOffset,
+                0,
+                this.buffer.duration
+            )
+
+            const now = this.ctx.currentTime
+
+            // Create a grain buffer
+            const source = this.ctx.createBufferSource()
+            source.buffer = this.buffer
+            source.playbackRate.value = this.pitchShift
+            source.addEventListener('ended', () => {
+                this.grains.pop()
             })
 
-            new window.Nexus.Slider('#playbackRate', {
-                size: [100, 20],
-                mode: 'relative', // 'absolute
-                min: 0,
-                max: 2,
-                step: 0.01,
-                value: 1,
-            }).on('change', v => {
-                this.grainPlayer.playbackRate = v
-            })
+            // Create panner node
+            const panner = this.ctx.createPanner()
+            panner.panningModel = 'equalpower'
+            panner.distanceModel = 'linear'
+            const pannerX = utils.randomFloat(this.pan * -1, this.pan)
+            panner.setPosition(pannerX, 0, 0)
 
-            new window.Nexus.Slider('#overlap', {
-                size: [100, 20],
-                mode: 'relative', // 'absolute
-                min: 0,
-                max: 1,
-                step: 0.01,
-                value: 0.5,
-            }).on('change', v => {
-                this.grainPlayer.overlap = v
-            })
+            // Create gain node
+            let gain
+            if (this.useEnvelope) {
+                gain = this.ctx.createGain()
+                source.connect(panner)
+                panner.connect(gain)
+                gain.connect(this.master)
+            } else {
+                source.connect(panner)
+                panner.connect(this.master)
+            }
 
-            new window.Nexus.Slider('#detune', {
-                size: [100, 20],
-                mode: 'relative', // 'absolute
-                min: -1200,
-                max: 1200,
-                step: 1,
-                value: 0,
-            }).on('change', v => {
-                this.grainPlayer.detune = v
-            })
+            // Play grain
+            source.start(now, grainOffset, this.grainSize)
 
-            new window.Nexus.Toggle('#reverse', {
-                size: [40, 20],
-                state: false,
-            }).on('change', v => {
-                this.grainPlayer.reverse = v
-            })
+            // Set envelope (triangular for now)
+            if (this.useEnvelope) {
+                gain.gain.setValueAtTime(0, now)
+                const attackOffset = now + this.envelope.attack
+                const releaseOffset =
+                    attackOffset + this.grainSize - this.envelope.release
+                console.log({
+                    now,
+                    attackOffset,
+                    releaseOffset,
+                    grainSize: this.grainSize,
+                })
+                gain.gain.linearRampToValueAtTime(1, attackOffset)
+                gain.gain.linearRampToValueAtTime(0, releaseOffset)
+            }
+
+            // Cleanup nodes after having played
+            // TODO:
+
+            // Draw grain
+            const grainX = utils.map(
+                grainOffset,
+                0,
+                this.buffer.duration,
+                0,
+                this.width
+            )
+            this.grains[0] = { x: grainX }
+            // this.grains.push({ x: grainX })
+            this.drawGrains()
+        },
+
+        drawGrains() {
+            this.canvasCtx.clearRect(0, 0, this.width, this.height)
+            for (let i = 0; i < this.grains.length; i++) {
+                const { x } = this.grains[i]
+                this.canvasCtx.fillStyle = 'rgba(255,0,0,0.7)'
+                const size = Math.max(
+                    5,
+                    (this.width / this.buffer.duration) * this.grainSize
+                )
+                this.canvasCtx.fillRect(
+                    x - size / 2,
+                    this.height / 2 - size / 2,
+                    size,
+                    size
+                )
+            }
+        },
+
+        updateInterval() {
+            window.clearInterval(this.interval)
+            this.interval = window.setInterval(() => {
+                this.addGrain()
+            }, 1000 / this.density)
         },
     },
 }
 </script>
 
 <style lang="scss">
+@import 'tooltip.scss';
+
+:root {
+    --bg: rgb(29, 29, 29);
+    --fg: rgb(63, 63, 63);
+    --accent: rgb(197, 197, 197);
+    --waveColor: rgba(255, 128, 0, 155);
+}
+.controls {
+    background: var(--fg);
+}
+html,
+body {
+    background: var(--bg);
+    color: var(--accent);
+    font-family: 'Avenir';
+}
+
 #app {
-    font-family: 'Avenir', Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    // text-align: center;
-    color: #2c3e50;
-    margin-top: 60px;
-}
-
-.container {
-    width: 80%;
-    max-width: 800px;
-    min-width: 300px;
     margin: 0 auto;
-    margin-top: 150px;
+    max-width: 800px;
+    display: grid;
+    grid-template-columns: 11fr 1fr;
 }
 
-#buttons {
-    margin-top: 50px;
+#canvas {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    height: 200px;
+    z-index: 1000;
 }
 
-#reverse,
-#grainSize,
-#overlap,
-#detune,
-#playbackRate {
-    margin-bottom: 20px;
+.row {
+    display: flex;
+}
+
+#presets {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+    .preset {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        &:hover,
+        &.active {
+            background: var(--accent);
+            color: var(--bg);
+            cursor: pointer;
+        }
+        background: var(--fg);
+        justify-self: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-left: 5px;
+    }
+}
+
+.waveform-wrapper {
+    position: relative;
+}
+
+#waveform {
+    height: 200px;
+    width: 100%;
+    background: var(--fg);
+}
+
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 25px;
+    background: var(--fg);
+    outline: none;
+    opacity: 0.7;
+    -webkit-transition: 0.2s;
+    transition: opacity 0.2s;
+}
+
+.slider:hover {
+    opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 25px;
+    height: 25px;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 25px;
+    height: 25px;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+#controls {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-gap: 20px;
+    .control {
+        font-size: 12px;
+    }
+}
+
+* {
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    -webkit-touch-callout: none;
+    -o-user-select: none;
+    -moz-user-select: none;
+    -webkit-tap-highlight-color: transparent !important;
+    box-sizing: border-box;
+    &:focus {
+        outline: none !important;
+    }
 }
 </style>
