@@ -38,6 +38,9 @@
                 <span>Envelope</span>
                 <input v-model="useEnvelope" type="checkbox" />
             </div>
+            <div class="control">
+                <button @click="ctx.resume()">Resume AC</button>
+            </div>
         </div>
     </div>
 </template>
