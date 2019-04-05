@@ -18,12 +18,11 @@
         </div>
         <div id="controls">
             <div v-for="param in params" :key="param.label" class="control">
-                <span v-tooltip="`${param.tooltip}`"
-                    >{{ param.label }}
-                    <small style="text-align: right"
-                        >({{ param.value }})</small
-                    ></span
-                >
+                <!-- <span v-tooltip="`${param.tooltip}`"> -->
+                <span>
+                    {{ param.label }}
+                    <!-- <small style="text-align: right">({{ param.value }})</small> -->
+                </span>
                 <input
                     v-model.number="param.value"
                     type="range"
@@ -34,13 +33,10 @@
                     @dblclick="param.value = param.default"
                 />
             </div>
-            <div class="control">
+            <!-- <div class="control">
                 <span>Envelope</span>
                 <input v-model="useEnvelope" type="checkbox" />
-            </div>
-            <div class="control">
-                <button @click="ctx.resume()">Resume AC</button>
-            </div>
+            </div> -->
         </div>
     </div>
 </template>
@@ -206,6 +202,10 @@ export default {
 
         this.master = this.ctx.createGain()
         this.master.connect(this.ctx.destination)
+
+        setTimeout(() => {
+            this.resize()
+        }, 200)
     },
 
     methods: {
@@ -221,6 +221,7 @@ export default {
             this.height = this.canvas.clientHeight
             this.canvas.setAttribute('width', this.width)
             this.canvas.setAttribute('height', this.height)
+            this.wave.setHeight(this.height)
         },
 
         initCanvas() {
@@ -234,9 +235,9 @@ export default {
                 container: '#waveform',
                 waveColor: 'rgba(255, 128, 0, 155)',
                 progressColor: 'transparent',
-                height: 200,
                 barHeight: 1,
                 barWidth: 1,
+                fillParent: true,
                 cursorWidth: 0,
             })
             this.wave.on('ready', () => {
@@ -268,6 +269,7 @@ export default {
             const x = e.offsetX
             const y = e.offsetY
             this.origin = { x, y }
+            this.ctx.resume()
         },
 
         addGrain() {
@@ -359,17 +361,30 @@ export default {
             this.canvasCtx.clearRect(0, 0, this.width, this.height)
             for (let i = 0; i < this.grains.length; i++) {
                 const { x } = this.grains[i]
-                this.canvasCtx.fillStyle = 'rgba(255,0,0,0.7)'
-                const size = Math.max(
-                    5,
-                    (this.width / this.buffer.duration) * this.grainSize
-                )
+                this.canvasCtx.fillStyle = 'rgba(197, 197, 197, 0.7)'
+
+                // rect
+                const minW = 5
+                const w = (this.width / this.buffer.duration) * this.grainSize
+                const h = 20
+                const size = Math.max(minW, w)
                 this.canvasCtx.fillRect(
-                    x - size / 2,
-                    this.height / 2 - 5,
+                    x - size,
+                    this.height / 2 - h / 2,
                     size,
-                    10
+                    h
                 )
+
+                // circle
+                // const minW = 5
+                // const w = (this.width / this.buffer.duration) * this.grainSize
+                // const size = Math.max(minW, w)
+                // this.canvasCtx.beginPath()
+                // const r =
+                //     ((this.width / this.buffer.duration) * this.grainSize) / 2
+                // this.canvasCtx.arc(x, this.height / 2, r, 0, 2 * Math.PI)
+                // // this.canvasCtx.stroke()
+                // this.canvasCtx.fill()
             }
         },
 
@@ -391,7 +406,13 @@ export default {
     --fg: rgb(63, 63, 63);
     --accent: rgb(197, 197, 197);
     --waveColor: rgba(255, 128, 0, 155);
+    --sliderSize: 50px;
 }
+
+* {
+    box-sizing: border-box;
+}
+
 .controls {
     background: var(--fg);
 }
@@ -399,14 +420,19 @@ html,
 body {
     background: var(--bg);
     color: var(--accent);
-    font-family: 'Avenir';
+    // font-family: 'Avenir';
+    font-family: 'Roboto', sans-serif;
+    width: 100%;
+    height: 100%;
+    margin: 0;
 }
 
 #app {
-    margin: 0 auto;
-    max-width: 800px;
+    padding: 20px;
+    // max-width: 800px;
     display: grid;
     grid-template-columns: 11fr 1fr;
+    height: 100vh;
 }
 
 #canvas {
@@ -414,7 +440,6 @@ body {
     top: 0;
     bottom: 0;
     width: 100%;
-    height: 200px;
     z-index: 1000;
 }
 
@@ -425,7 +450,7 @@ body {
 #presets {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    // justify-content: space-between;
     align-items: center;
     flex: 1;
     .preset {
@@ -440,10 +465,11 @@ body {
         }
         background: var(--fg);
         justify-self: center;
-        width: 40px;
-        height: 40px;
+        width: 60px;
+        height: 60px;
+        font-size: 22px;
         border-radius: 50%;
-        margin-left: 5px;
+        margin: 0 0 20px 10px;
     }
 }
 
@@ -451,8 +477,13 @@ body {
     position: relative;
 }
 
+#waveform,
+#canvas,
+canvas {
+    height: 500px;
+}
+
 #waveform {
-    height: 200px;
     width: 100%;
     background: var(--fg);
 }
@@ -460,7 +491,7 @@ body {
 .slider {
     -webkit-appearance: none;
     width: 100%;
-    height: 25px;
+    height: var(--sliderSize);
     background: var(--fg);
     outline: none;
     opacity: 0.7;
@@ -475,25 +506,27 @@ body {
 .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 25px;
-    height: 25px;
+    width: var(--sliderSize);
+    height: var(--sliderSize);
     background: var(--accent);
     cursor: pointer;
 }
 
 .slider::-moz-range-thumb {
-    width: 25px;
-    height: 25px;
+    width: var(--sliderSize);
+    height: var(--sliderSize);
     background: var(--accent);
     cursor: pointer;
 }
 
 #controls {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     grid-gap: 20px;
     .control {
-        font-size: 12px;
+        font-size: 22px;
+        text-transform: uppercase;
+        text-align: center;
     }
 }
 
