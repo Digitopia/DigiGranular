@@ -118,8 +118,8 @@ export default {
             ],
             soundActiveIdx: 0,
             dragging: false,
-            buffer: null,
-            reverseBuffer: null,
+            buffers: [],
+            reverseBuffers: [],
             ctx: null,
             canvasCtx: null,
             canvas: null,
@@ -190,6 +190,11 @@ export default {
                     this.soundActiveIdx = evt.key - 1
             }
         })
+
+        const AudioContext = window.AudioContext || window.webkitAudioContext
+        this.ctx = new AudioContext()
+        window.ctx = this.ctx
+        this.loadBuffers()
     },
 
     mounted() {
@@ -209,11 +214,52 @@ export default {
     },
 
     methods: {
+        loadBuffers() {
+            this.sounds.forEach((sound, index) => {
+                const req = new XMLHttpRequest()
+                req.open('GET', sound, true)
+                req.responseType = 'arraybuffer'
+                req.onload = () => {
+                    var audioData = req.response
+                    this.ctx.decodeAudioData(
+                        audioData,
+                        buffer => {
+                            this.buffers[index] = buffer
+
+                            if (index === 0) this.changeSound(0)
+
+                            // Clone buffer
+                            const clonedBuffer = this.ctx.createBuffer(
+                                1,
+                                buffer.length,
+                                buffer.sampleRate
+                            )
+                            const bufferData = clonedBuffer.getChannelData(0)
+                            for (let i = 0; i < buffer.length; i++) {
+                                bufferData[i] = buffer.getChannelData(0)[i]
+                            }
+
+                            // Reverse it
+                            Array.prototype.reverse.call(
+                                clonedBuffer.getChannelData(0)
+                            )
+                            this.reverseBuffers[index] = clonedBuffer
+                        },
+                        err => {
+                            console.log(
+                                'Error with decoding audio data',
+                                err.err
+                            )
+                        }
+                    )
+                }
+                req.send()
+            })
+        },
+
         changeSound(index) {
-            console.log('changeSound')
-            this.wave.load(this.sounds[index])
-            const { ac: ctx } = this.wave.backend
-            this.ctx = ctx
+            console.log('changing sound')
+            this.wave.loadDecodedBuffer(this.buffers[index])
         },
 
         resize() {
@@ -239,30 +285,9 @@ export default {
                 barWidth: 1,
                 fillParent: true,
                 cursorWidth: 0,
-            })
-            this.wave.on('ready', () => {
-                this.buffer = this.wave.backend.buffer
-                window.buffer = this.buffer
-
-                // Clone buffer
-                const clonedBuffer = this.ctx.createBuffer(
-                    1,
-                    this.buffer.length,
-                    this.buffer.sampleRate
-                )
-                const bufferData = clonedBuffer.getChannelData(0)
-                for (let i = 0; i < this.buffer.length; i++) {
-                    bufferData[i] = this.buffer.getChannelData(0)[i]
-                }
-
-                // Reverse it
-                Array.prototype.reverse.call(clonedBuffer.getChannelData(0))
-                this.reverseBuffer = clonedBuffer
-                window.reverseBuffer = this.reverseBuffer
+                audioContext: this.ctx,
             })
             window.wave = this.wave
-
-            this.changeSound(this.soundActiveIdx)
         },
 
         click(e) {
@@ -273,7 +298,12 @@ export default {
         },
 
         addGrain() {
-            console.log('Adding grain at', this.origin)
+            // console.log('Adding grain at', this.origin)
+
+            this.buffer =
+                Math.random() <= this.reverse
+                    ? this.reverseBuffers[this.soundActiveIdx]
+                    : this.buffers[this.soundActiveIdx]
 
             // Determine where to read the grain from
             const baseOffset = utils.map(
@@ -296,8 +326,7 @@ export default {
 
             // Create a grain buffer
             const source = this.ctx.createBufferSource()
-            const r = Math.random()
-            source.buffer = r <= this.reverse ? this.reverseBuffer : this.buffer
+            source.buffer = this.buffer
             source.playbackRate.value = this.pitchShift
             source.addEventListener('ended', () => {
                 this.grains.pop()
@@ -331,12 +360,12 @@ export default {
                 const attackOffset = now + this.envelope.attack
                 const releaseOffset =
                     attackOffset + this.grainSize - this.envelope.release
-                console.log({
-                    now,
-                    attackOffset,
-                    releaseOffset,
-                    grainSize: this.grainSize,
-                })
+                // console.log({
+                //     now,
+                //     attackOffset,
+                //     releaseOffset,
+                //     grainSize: this.grainSize,
+                // })
                 gain.gain.linearRampToValueAtTime(1, attackOffset)
                 gain.gain.linearRampToValueAtTime(0, releaseOffset)
             }
@@ -361,7 +390,7 @@ export default {
             this.canvasCtx.clearRect(0, 0, this.width, this.height)
             for (let i = 0; i < this.grains.length; i++) {
                 const { x } = this.grains[i]
-                this.canvasCtx.fillStyle = 'rgba(197, 197, 197, 0.7)'
+                this.canvasCtx.fillStyle = 'rgba(197, 197, 197, 0.8)'
 
                 // rect
                 const minW = 5
@@ -369,7 +398,7 @@ export default {
                 const h = 20
                 const size = Math.max(minW, w)
                 this.canvasCtx.fillRect(
-                    x - size,
+                    x - w / 2,
                     this.height / 2 - h / 2,
                     size,
                     h
