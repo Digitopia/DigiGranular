@@ -1,29 +1,38 @@
 <template>
-    <div id="app">
-        <div class="waveform-wrapper">
+    <div id="app" class="container">
+        <div id="presets">
+            <div
+                v-for="(_, idx) in sounds"
+                :key="idx"
+                class="preset btn"
+                :class="{ active: idx === soundActiveIdx }"
+                @click="soundActiveIdx = idx"
+            >
+                <div>{{ idx + 1 }}</div>
+            </div>
+            <div class="preset stop btn" @click="stop">
+                <i class="fa fa-stop"></i>
+            </div>
+        </div>
+
+        <div id="waveform-wrapper">
             <div id="waveform"></div>
             <canvas id="canvas" ref="canvas" @click="click"></canvas>
         </div>
 
-        <div id="presets">
+        <div id="controls" class="my-3 row">
             <div
-                v-for="(sound, index) in sounds"
-                :key="index"
-                class="preset"
-                :class="{ active: index === soundActiveIdx }"
-                @click="soundActiveIdx = index"
+                v-for="param in params"
+                :key="param.label"
+                class="control col-6 col-md-4 px-2 px-md-4 mb-3"
             >
-                <div>{{ index + 1 }}</div>
-            </div>
-        </div>
-        <div id="controls">
-            <div v-for="param in params" :key="param.label" class="control">
-                <!-- <span v-tooltip="`${param.tooltip}`"> -->
-                <span>
+                <!-- <span v-tooltip="`${param.tooltip}`"></span>-->
+                <label for="range" class="mb-0">
                     {{ param.label }}
                     <!-- <small style="text-align: right">({{ param.value }})</small> -->
-                </span>
+                </label>
                 <input
+                    id="range"
                     v-model.number="param.value"
                     type="range"
                     class="slider"
@@ -33,10 +42,6 @@
                     @dblclick="param.value = param.default"
                 />
             </div>
-            <!-- <div class="control">
-                <span>Envelope</span>
-                <input v-model="useEnvelope" type="checkbox" />
-            </div> -->
         </div>
     </div>
 </template>
@@ -61,7 +66,7 @@ export default {
                     tooltip: 'How big the grain? (10ms-200ms)',
                 },
                 pitchShift: {
-                    min: 0.1,
+                    min: 0,
                     max: 2,
                     step: 0.01,
                     default: 1,
@@ -78,14 +83,22 @@ export default {
                     label: 'Pan',
                     tooltip: 'Pan much or not really?',
                 },
-                density: {
-                    min: 1,
-                    max: 30,
-                    step: 0.1,
-                    default: 3,
-                    value: 3,
-                    label: 'Density',
-                    tooltip: 'How many grains per second? (1-10)',
+                // density: {
+                //     min: 1,
+                //     max: 30,
+                //     step: 0.1,
+                //     default: 3,
+                //     value: 3,
+                //     label: 'Density',
+                //     tooltip: 'How many grains per second? (1-10)',
+                // },
+                overlap: {
+                    min: 0,
+                    max: 1,
+                    step: 0.01,
+                    default: 0,
+                    value: 0,
+                    label: 'Overlap',
                 },
                 randomness: {
                     min: 0,
@@ -112,9 +125,9 @@ export default {
             },
             sounds: [
                 '/sounds/speech.wav',
+                '/sounds/bird.wav',
                 '/sounds/guitar.wav',
                 '/sounds/bonang.wav',
-                '/sounds/bird.wav',
             ],
             soundActiveIdx: 0,
             dragging: false,
@@ -125,7 +138,11 @@ export default {
             canvas: null,
             grains: [],
             master: null,
-            origin: null,
+            width: null,
+            origin: {
+                x: null,
+                y: null,
+            },
         }
     },
 
@@ -138,16 +155,16 @@ export default {
             return this.params.pitchShift.value
         },
 
-        rate() {
-            return this.params.rate.value
-        },
-
         pan() {
             return this.params.pan.value
         },
 
-        density() {
-            return this.params.density.value
+        // density() {
+        //     return this.params.density.value
+        // },
+
+        overlap() {
+            return this.params.overlap.value
         },
 
         randomness() {
@@ -159,23 +176,33 @@ export default {
         },
 
         x() {
-            return this.origin.x
+            if (!this.origin || !this.origin.x) return null
+            return this.width * this.origin.x
+        },
+
+        isPlaying() {
+            return this.origin !== null
         },
     },
 
     watch: {
-        soundActiveIdx(newIdx, oldIdx) {
-            if (newIdx === oldIdx) return
-            this.soundActiveIdx = newIdx
-            this.changeSound(newIdx)
+        soundActiveIdx() {
+            this.changeSound(this.soundActiveIdx)
         },
 
         origin() {
-            console.log('origin changed', this.origin)
             this.updateInterval()
         },
 
-        density() {
+        // density() {
+        //     this.updateInterval()
+        // },
+
+        grainSize() {
+            this.updateInterval()
+        },
+
+        overlap() {
             this.updateInterval()
         },
     },
@@ -188,6 +215,12 @@ export default {
                 case '3':
                 case '4':
                     this.soundActiveIdx = evt.key - 1
+                    break
+                case ' ':
+                    this.stop()
+                    break
+                default:
+                    break
             }
         })
 
@@ -220,7 +253,7 @@ export default {
                 req.open('GET', sound, true)
                 req.responseType = 'arraybuffer'
                 req.onload = () => {
-                    var audioData = req.response
+                    const audioData = req.response
                     this.ctx.decodeAudioData(
                         audioData,
                         buffer => {
@@ -258,7 +291,6 @@ export default {
         },
 
         changeSound(index) {
-            console.log('changing sound')
             this.wave.loadDecodedBuffer(this.buffers[index])
         },
 
@@ -279,7 +311,7 @@ export default {
         initWave() {
             this.wave = WaveSurfer.create({
                 container: '#waveform',
-                waveColor: 'rgba(255, 128, 0, 155)',
+                waveColor: '#ff8000',
                 progressColor: 'transparent',
                 barHeight: 1,
                 barWidth: 1,
@@ -293,8 +325,16 @@ export default {
         click(e) {
             const x = e.offsetX
             const y = e.offsetY
-            this.origin = { x, y }
+            const ratioX = x / this.width
+            const ratioY = y / this.height
+            this.origin = { x: ratioX, y: ratioY }
             this.ctx.resume()
+        },
+
+        stop() {
+            this.origin = null
+            this.clearCanvas()
+            window.clearInterval(this.interval)
         },
 
         addGrain() {
@@ -333,11 +373,10 @@ export default {
             })
 
             // Create panner node
+            // NOTE: using PannerNode instead of StereoPannerNode, since still no support in Safari
             const panner = this.ctx.createPanner()
-            panner.panningModel = 'equalpower'
-            panner.distanceModel = 'linear'
-            const pannerX = utils.randomFloat(this.pan * -1, this.pan)
-            panner.setPosition(pannerX, 0, 0)
+            const panX = utils.randomFloat(this.pan * -1, this.pan)
+            panner.setPosition(panX, 0, 0)
 
             // Create gain node
             let gain
@@ -386,8 +425,20 @@ export default {
             this.drawGrains()
         },
 
-        drawGrains() {
+        clearCanvas() {
             this.canvasCtx.clearRect(0, 0, this.width, this.height)
+        },
+
+        drawGrains() {
+            this.clearCanvas()
+
+            this.canvasCtx.fillStyle = 'rgba(10, 10, 10, 0.4)'
+            this.canvasCtx.beginPath()
+            const r = 5
+            this.canvasCtx.arc(this.x, this.height / 2, r, 0, 2 * Math.PI)
+            // this.canvasCtx.stroke()
+            this.canvasCtx.fill()
+
             for (let i = 0; i < this.grains.length; i++) {
                 const { x } = this.grains[i]
                 this.canvasCtx.fillStyle = 'rgba(197, 197, 197, 0.8)'
@@ -418,10 +469,26 @@ export default {
         },
 
         updateInterval() {
+            // density version
+            // if (!this.origin) return
+            // window.clearInterval(this.interval)
+            // this.interval = window.setInterval(() => {
+            //     this.addGrain()
+            // }, 1000 / this.density)
+
+            // overlap version
+            const intervalSeconds = utils.map(
+                this.overlap,
+                this.params.overlap.min,
+                this.params.overlap.max,
+                this.grainSize,
+                this.grainSize / 2
+            )
+            if (!this.origin) return
             window.clearInterval(this.interval)
             this.interval = window.setInterval(() => {
                 this.addGrain()
-            }, 1000 / this.density)
+            }, intervalSeconds * 1000)
         },
     },
 }
@@ -431,145 +498,144 @@ export default {
 @import 'tooltip.scss';
 
 :root {
-    --bg: rgb(29, 29, 29);
-    --fg: rgb(63, 63, 63);
-    --accent: rgb(197, 197, 197);
-    --waveColor: rgba(255, 128, 0, 155);
-    --sliderSize: 50px;
+    --bg: #1d1d1d;
+    --fg: #3f3f3f;
+    --accent: #c5c5c5;
+    --wave-color: #ff8000;
+    --slider-size: 38px;
+    --border-radius: 40px;
 }
 
 * {
     box-sizing: border-box;
+    &:focus {
+        outline: none !important;
+    }
 }
 
-.controls {
-    background: var(--fg);
+html {
+    position: relative;
+    min-height: 100vh;
 }
+
 html,
 body {
     background: var(--bg);
     color: var(--accent);
-    // font-family: 'Avenir';
-    font-family: 'Roboto', sans-serif;
-    width: 100%;
-    height: 100%;
-    margin: 0;
+    font-family: 'Roboto Mono', sans-serif;
+}
+
+h1 {
+    color: var(--wave-color) !important;
 }
 
 #app {
-    padding: 20px;
-    // max-width: 800px;
-    display: grid;
-    grid-template-columns: 11fr 1fr;
-    height: 100vh;
+    padding-bottom: 60px; // NOTE: footer height
 }
 
-#canvas {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 100%;
-    z-index: 1000;
-}
+#waveform-wrapper {
+    position: relative;
+    #waveform,
+    #canvas {
+        border-radius: calc(var(--border-radius) / 2);
+    }
 
-.row {
-    display: flex;
+    #canvas {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        z-index: 1000;
+    }
+
+    #waveform {
+        width: 100%;
+        background: var(--fg);
+    }
 }
 
 #presets {
     display: flex;
-    flex-direction: column;
-    // justify-content: space-between;
+}
+
+.preset {
+    display: flex;
+    justify-content: center;
     align-items: center;
-    flex: 1;
-    .preset {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        &:hover,
-        &.active {
-            background: var(--accent);
-            color: var(--bg);
-            cursor: pointer;
-        }
-        background: var(--fg);
-        justify-self: center;
-        width: 60px;
-        height: 60px;
-        font-size: 22px;
-        border-radius: 50%;
-        margin: 0 0 20px 10px;
+    background: var(--fg);
+    width: 3rem;
+    height: 3rem;
+    font-size: 22px;
+    border-radius: 50%;
+    margin-right: 10px;
+    margin-bottom: 10px;
+
+    &:hover,
+    &.active {
+        background: var(--accent);
+        color: var(--bg);
+        cursor: pointer;
+    }
+
+    &.stop {
+        margin-right: 0;
+        margin-left: auto;
     }
 }
 
-.waveform-wrapper {
-    position: relative;
-}
-
-#waveform,
-#canvas,
-canvas {
-    height: 500px;
-}
-
-#waveform {
-    width: 100%;
-    background: var(--fg);
-}
-
-.slider {
-    -webkit-appearance: none;
-    width: 100%;
-    height: var(--sliderSize);
-    background: var(--fg);
-    outline: none;
-    opacity: 0.7;
-    -webkit-transition: 0.2s;
-    transition: opacity 0.2s;
-}
-
-.slider:hover {
-    opacity: 1;
-}
-
-.slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: var(--sliderSize);
-    height: var(--sliderSize);
-    background: var(--accent);
-    cursor: pointer;
-}
-
-.slider::-moz-range-thumb {
-    width: var(--sliderSize);
-    height: var(--sliderSize);
-    background: var(--accent);
-    cursor: pointer;
-}
-
 #controls {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-gap: 20px;
     .control {
-        font-size: 22px;
+        font-size: 1.2rem;
         text-transform: uppercase;
         text-align: center;
     }
 }
 
-* {
-    user-select: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    -webkit-touch-callout: none;
-    -o-user-select: none;
-    -moz-user-select: none;
-    -webkit-tap-highlight-color: transparent !important;
-    box-sizing: border-box;
-    &:focus {
-        outline: none !important;
+footer {
+    position: absolute;
+    bottom: 0;
+    text-align: center;
+    margin: 0 auto !important;
+    width: 100%;
+    a {
+        color: var(--accent);
+        &:hover {
+            color: var(--wave-color);
+        }
+    }
+}
+
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: var(--slider-size);
+    background: var(--fg);
+    outline: none;
+    opacity: 0.7;
+    -webkit-transition: 0.2s;
+    transition: opacity 0.2s;
+    border-radius: var(--border-radius);
+
+    &:hover {
+        opacity: 1;
+    }
+
+    &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: var(--slider-size);
+        height: var(--slider-size);
+        background: var(--accent);
+        cursor: pointer;
+        border-radius: var(--border-radius);
+    }
+
+    &::-moz-range-thumb {
+        width: var(--slider-size);
+        height: var(--slider-size);
+        background: var(--accent);
+        cursor: pointer;
+        border-radius: var(--border-radius);
     }
 }
 </style>

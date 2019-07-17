@@ -1,20 +1,63 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="en">
     <head>
         <meta charset="utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width,initial-scale=1.0, user-scalable=0" />
-        <link rel="icon" href="<%= BASE_URL %>favicon.ico" />
-        <script>window.TONE_SILENCE_VERSION_LOGGING = true</script>
-        <script src="https://unpkg.com/wavesurfer.js"></script>
-        <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
-        <!-- <script src="https://unpkg.com/wavesurfer.js/dist/plugin/wavesurfer.cursor.min.js"></script> -->
-        <!-- <script src="https://unpkg.com/wavesurfer.js/dist/plugin/wavesurfer.regions.min.js"></script> -->
+        <meta
+            name="viewport"
+            content="width=device-width,initial-scale=1.0, user-scalable=0"
+        />
 
+        <meta name="description" content="DigiGranular" />
+        <meta name="keywords" content="DigiGranular, granular synthesizer" />
+        <meta name="author" content="Digitópia, Casa da Música" />
+
+        <link rel="icon" href="<%= BASE_URL %>favicon.ico" />
+        <script>
+            window.TONE_SILENCE_VERSION_LOGGING = true
+        </script>
+        <link
+            href="https://fonts.googleapis.com/css?family=Roboto+Mono"
+            rel="stylesheet"
+        />
+        <link
+            href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/gh/coliff/bootstrap-rfs/bootstrap-rfs.css"
+        />
+        <link
+            href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
+            rel="stylesheet"
+        />
         <title>DigiGranular</title>
     </head>
     <body>
-        <div id="app"></div>
-        <!-- built files will be auto injected -->
+        <div class="container mt-4">
+            <h1 class="text-center mb-0">
+                DigiGranular
+            </h1>
+            <p class="text-center text-muted small mt-1">
+                an online granular synthesizer powered by Web Audio
+            </p>
+
+            <p class="text-center">
+                Click anywhere on the wave to start making sound!
+            </p>
+
+            <div id="app"></div>
+        </div>
+        <footer>
+            <div class="container text-center text-muted">
+                <p class="small mb-2">
+                    Made by
+                    <a href="https://digitopia.casadamusica.com">Digitópia</a>
+                    @
+                    <a href="http://www.casadamusica.com/">Casa da Música</a>
+                </p>
+            </div>
+        </footer>
     </body>
 </html>
