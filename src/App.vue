@@ -77,7 +77,7 @@ export default {
                 pan: {
                     min: 0,
                     max: 1,
-                    step: 0.1,
+                    step: 0.01,
                     default: 0.5,
                     value: 0.5,
                     label: 'Pan',
@@ -208,6 +208,9 @@ export default {
     },
 
     created() {
+        this.params.reverse.value = 0
+        this.params.randomness.value = 0
+        this.params.pan.value = 0
         document.addEventListener('keypress', evt => {
             switch (evt.key) {
                 case '1':
@@ -374,9 +377,20 @@ export default {
 
             // Create panner node
             // NOTE: using PannerNode instead of StereoPannerNode, since still no support in Safari
-            const panner = this.ctx.createPanner()
-            const panX = utils.randomFloat(this.pan * -1, this.pan)
-            panner.setPosition(panX, 0, 0)
+            const pan = utils.randomFloat(this.pan * -1, this.pan)
+            console.log({ pan })
+            const skipStereoPanner = true
+            let panner
+            if (!skipStereoPanner && this.ctx.createStereoPanner) {
+                panner = this.ctx.createStereoPanner()
+                panner.pan.value = pan
+            } else {
+                console.log('faling back to pannerNode')
+                panner = this.ctx.createPanner()
+                panner.panningModel = 'equalpower'
+                panner.setPosition(pan, 0, 1 - Math.abs(pan))
+                // panner.setPosition(pan, 1, 1)
+            }
 
             // Create gain node
             let gain
