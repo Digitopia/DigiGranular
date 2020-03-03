@@ -1,0 +1,1 @@
+{"name":"DigiGranular","short_name":"DigiGranular","theme_color":"#1d1d1d","icons":[{"src":"./img/icons/android-icon-192x192.png","sizes":"192x192","type":"image/png"},{"src":"./img/icons/android-icon-512x512.png","sizes":"512x512","type":"image/png"}],"start_url":"/?utm_source=homescreen","display":"fullscreen","background_color":"#1d1d1d","orientation":"landscape"}
