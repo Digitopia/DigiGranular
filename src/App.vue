@@ -282,7 +282,7 @@ export default {
                             this.reverseBuffers[index] = clonedBuffer
                         },
                         err => {
-                            console.log(
+                            console.error(
                                 'Error with decoding audio data',
                                 err.err
                             )
@@ -378,14 +378,14 @@ export default {
             // Create panner node
             // NOTE: using PannerNode instead of StereoPannerNode, since still no support in Safari
             const pan = utils.randomFloat(this.pan * -1, this.pan)
-            console.log({ pan })
+            // console.log({ pan })
             const skipStereoPanner = true
             let panner
             if (!skipStereoPanner && this.ctx.createStereoPanner) {
                 panner = this.ctx.createStereoPanner()
                 panner.pan.value = pan
             } else {
-                console.log('faling back to pannerNode')
+                // console.log('faling back to pannerNode')
                 panner = this.ctx.createPanner()
                 panner.panningModel = 'equalpower'
                 panner.setPosition(pan, 0, 1 - Math.abs(pan))
